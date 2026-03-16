@@ -18,27 +18,22 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://packages.icinga.com/icinga.key | gpg --dearmor -o /etc/apt/keyrings/icinga.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/icinga.gpg] https://packages.icinga.com/ubuntu icinga-noble main" > /etc/apt/sources.list.d/icinga.list
 
-# Install all required packages
+# Install system packages first (from Ubuntu repos)
 RUN apt-get update && apt-get install -y \
-    # Icinga2 core
-    icinga2 icinga2-ido-mysql \
-    # IcingaWeb2
-    icingaweb2 icingaweb2-module-monitoring \
-    # Web server and PHP
     apache2 libapache2-mod-php \
-    php-mysql php-gd php-curl php-intl php-xml php-mbstring php-imagick \
-    # Database
+    php-mysql php-gd php-curl php-intl php-xml php-mbstring php-imagick php-cli \
     mysql-server mysql-client \
-    # Nagios plugins (same as Observium uses)
     monitoring-plugins nagios-plugins-contrib \
-    # Network tools for checks
     fping snmp dnsutils nmap iputils-ping traceroute \
-    # Process management
     supervisor cron \
-    # Utilities
     yq jq python3 python3-pymysql \
-    # For bcrypt password hashing
-    php-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Icinga2 + IcingaWeb2 from official Icinga repo
+# Pin to Icinga repo to avoid version conflicts between Ubuntu and Icinga packages
+RUN apt-get update && apt-get install -y \
+    icinga2 icinga2-ido-mysql \
+    icingaweb2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable required Apache modules
