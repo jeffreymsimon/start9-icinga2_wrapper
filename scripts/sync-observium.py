@@ -107,8 +107,13 @@ def parse_curl_args(probe_args):
     Observium probe_args format examples:
       -p 8080              → port 8080
       -S -p 443 --sni -k   → HTTPS on 443 with SNI, skip cert verify
-      -H observium.10fir.com -S -k → HTTPS to specific hostname
+      -H observium.10fir.com -S -k → HTTPS to specific hostname via DNS
       (empty)              → HTTP on port 80
+
+    When -H <hostname> is present, we set http_address to that hostname so
+    check_http resolves it via DNS (typically through Cloudflare) rather than
+    connecting to the host's internal IP address. This is the correct behavior
+    for public-facing probes that test the full path through Cloudflare/tunnel.
     """
     extra_vars = {}
 
@@ -117,10 +122,16 @@ def parse_curl_args(probe_args):
     if port_match:
         extra_vars["http_port"] = port_match.group(1)
 
-    # Parse hostname (-H HOSTNAME) — for virtual hosts / SNI
+    # Parse hostname (-H HOSTNAME) — connect to this hostname via DNS
     host_match = re.search(r"-H\s+(\S+)", probe_args)
     if host_match:
-        extra_vars["http_vhost"] = host_match.group(1)
+        target_host = host_match.group(1)
+        # http_address overrides the IP that check_http connects to.
+        # This makes it resolve the hostname via DNS (e.g., Cloudflare edge)
+        # instead of connecting to the Icinga2 host object's internal IP.
+        extra_vars["http_address"] = target_host
+        # http_vhost sets the Host header in the HTTP request
+        extra_vars["http_vhost"] = target_host
 
     # Detect HTTPS
     is_ssl = "-S" in probe_args or "--sni" in probe_args
@@ -128,11 +139,17 @@ def parse_curl_args(probe_args):
     if is_ssl or port == "443":
         extra_vars["http_ssl"] = "true"
 
+    # Enable SNI when connecting to a named host over HTTPS so that TLS
+    # negotiation sends the correct hostname. This is essential for
+    # Cloudflare-proxied endpoints and any server using SNI-based routing.
+    if extra_vars.get("http_ssl") == "true" and "http_address" in extra_vars:
+        extra_vars["http_sni"] = "true"
+
     # Note: Observium's -k means "skip cert verification" (curl -k).
-    # Icinga2's check_http has no equivalent flag — http_certificate maps to
-    # -C (cert validity days), NOT skip-verify. We simply omit cert checking
-    # for self-signed endpoints. check_http will still connect via HTTPS and
-    # check the HTTP response without validating the certificate chain.
+    # When connecting through Cloudflare, the cert is valid so we do NOT
+    # need to skip verification. For direct connections to internal hosts
+    # with self-signed certs, check_http does not validate certs by default
+    # (it only checks cert validity days when -C is used), so no flag needed.
 
     return extra_vars
 

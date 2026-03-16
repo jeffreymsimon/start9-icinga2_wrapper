@@ -2,7 +2,7 @@
 
 ## Overview
 
-Icinga2 monitoring system packaged for StartOS 0.4.0. Deploys Icinga2 + IcingaWeb2 + MySQL in a single LXC subcontainer on haz1upstart003 (172.16.35.45). Syncs host/service definitions from Observium on haz1upmedia001.
+Icinga2 monitoring system packaged for StartOS 0.4.0. Deploys Icinga2 + IcingaWeb2 + MySQL in a single LXC subcontainer on haz1upstart003 (10.0.20.87). Syncs host/service definitions from Observium on haz1upmedia001.
 
 ## Architecture
 
@@ -66,8 +66,8 @@ Stored in Bitwarden: "haz1upstart003 - Icinga2 IcingaWeb2 Admin"
 rm -f *.s9pk && make
 
 # Deploy (SCP workaround for alpha20)
-scp -i ~/bin/claude/.config/ssh/claude-key icinga2.s9pk start9@172.16.35.45:/tmp/
-ssh -i ~/bin/claude/.config/ssh/claude-key start9@172.16.35.45 \
+scp -i ~/bin/claude/.config/ssh/claude-key icinga2.s9pk start9@10.0.20.87:/tmp/
+ssh -i ~/bin/claude/.config/ssh/claude-key start9@10.0.20.87 \
   "sudo start-cli package install --sideload /tmp/icinga2.s9pk"
 ```
 
@@ -75,11 +75,11 @@ ssh -i ~/bin/claude/.config/ssh/claude-key start9@172.16.35.45 \
 
 ```bash
 # View logs
-ssh -i ~/bin/claude/.config/ssh/claude-key start9@172.16.35.45 \
+ssh -i ~/bin/claude/.config/ssh/claude-key start9@10.0.20.87 \
   "sudo journalctl -u 'startd' --since '5 min ago' | grep icinga2"
 
 # Attach to container
-ssh -i ~/bin/claude/.config/ssh/claude-key start9@172.16.35.45 \
+ssh -i ~/bin/claude/.config/ssh/claude-key start9@10.0.20.87 \
   "sudo start-cli package attach icinga2 -- /bin/bash"
 
 # Inside container:
