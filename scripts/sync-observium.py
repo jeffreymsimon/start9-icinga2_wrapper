@@ -55,7 +55,7 @@ def fetch_probes(cursor):
         """
         SELECT probe_id, device_id, probe_descr, probe_type, probe_args
         FROM probes
-        WHERE probe_deleted = 0
+        WHERE probe_disabled = 0
         ORDER BY device_id, probe_type
         """
     )
