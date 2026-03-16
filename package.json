@@ -1,6 +1,6 @@
 {
   "name": "icinga2-startos",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha.2",
   "description": "Icinga2 monitoring for StartOS",
   "scripts": {
     "build": "rm -rf ./javascript && ncc build startos/index.ts -o ./javascript",

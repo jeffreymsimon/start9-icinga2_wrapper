@@ -101,6 +101,71 @@ def generate_hosts_conf(devices, check_interval, retry_interval, max_attempts):
     return "\n".join(lines)
 
 
+def parse_curl_args(probe_args):
+    """Parse Observium check_curl probe_args into Icinga2 http check vars.
+
+    Observium probe_args format examples:
+      -p 8080              → port 8080
+      -S -p 443 --sni -k   → HTTPS on 443 with SNI, skip cert verify
+      -H observium.10fir.com -S -k → HTTPS to specific hostname
+      (empty)              → HTTP on port 80
+    """
+    extra_vars = {}
+
+    # Parse port (-p PORT)
+    port_match = re.search(r"-p\s+(\d+)", probe_args)
+    if port_match:
+        extra_vars["http_port"] = port_match.group(1)
+
+    # Parse hostname (-H HOSTNAME) — for virtual hosts / SNI
+    host_match = re.search(r"-H\s+(\S+)", probe_args)
+    if host_match:
+        extra_vars["http_vhost"] = host_match.group(1)
+
+    # Detect HTTPS
+    is_ssl = "-S" in probe_args or "--sni" in probe_args
+    port = extra_vars.get("http_port", "")
+    if is_ssl or port == "443":
+        extra_vars["http_ssl"] = "true"
+
+    # Skip cert verification (-k)
+    if "-k" in probe_args:
+        extra_vars["http_certificate"] = "ignore"
+
+    return extra_vars
+
+
+def parse_snmp_args(probe_args, snmp_community):
+    """Parse Observium check_snmp probe_args into Icinga2 snmp check vars.
+
+    Observium probe_args format examples:
+      -o .1.3.6.1.2.1.1.3.0                         → uptime OID (use snmp-uptime)
+      -o .1.3.6.1.4.1.674.10892.5.5.1.20.140.1.1.4.1 -w 2:2 -c 1:2 -l "VD_00 RAID state"
+    """
+    extra_vars = {"snmp_community": snmp_community}
+
+    oid_match = re.search(r"-o\s+([.\d]+)", probe_args)
+    if oid_match:
+        extra_vars["snmp_oid"] = oid_match.group(1)
+
+    # Parse warning threshold (-w RANGE)
+    warn_match = re.search(r"-w\s+(\S+)", probe_args)
+    if warn_match:
+        extra_vars["snmp_warn"] = warn_match.group(1)
+
+    # Parse critical threshold (-c RANGE)
+    crit_match = re.search(r"-c\s+(\S+)", probe_args)
+    if crit_match:
+        extra_vars["snmp_crit"] = crit_match.group(1)
+
+    # Parse label (-l "LABEL")
+    label_match = re.search(r'-l\s+"([^"]+)"', probe_args)
+    if label_match:
+        extra_vars["snmp_label"] = label_match.group(1)
+
+    return extra_vars
+
+
 def generate_services_conf(devices, probes, snmp_community):
     # Build device_id -> hostname map
     dev_map = {d["device_id"]: sanitize_name(d["hostname"]) for d in devices}
@@ -136,34 +201,36 @@ def generate_services_conf(devices, probes, snmp_community):
                 check_cmd = "ssh"
 
             elif probe_type == "check_snmp":
-                svc_name = sanitize_name(probe_descr) or "snmp"
-                # Parse OID from args if present
-                oid_match = re.search(r"-o\s+([.\d]+)", probe_args)
-                if oid_match and oid_match.group(1) == ".1.3.6.1.2.1.1.3.0":
+                extra_vars = parse_snmp_args(probe_args, snmp_community)
+                oid = extra_vars.get("snmp_oid", "")
+
+                if oid == ".1.3.6.1.2.1.1.3.0":
+                    # Standard uptime OID — use built-in snmp-uptime command
                     check_cmd = "snmp-uptime"
                     svc_name = "snmp-uptime"
+                elif "snmp_warn" in extra_vars or "snmp_crit" in extra_vars:
+                    # SNMP probe with thresholds — use generic snmp command
+                    check_cmd = "snmp"
+                    svc_name = sanitize_name(probe_descr) or "snmp"
                 else:
                     check_cmd = "snmp-uptime"
-                    svc_name = "snmp"
-                extra_vars["snmp_community"] = snmp_community
+                    svc_name = sanitize_name(probe_descr) or "snmp"
 
             elif probe_type in ("check_curl", "check_http"):
+                extra_vars = parse_curl_args(probe_args)
                 svc_name = sanitize_name(probe_descr) or "http"
                 check_cmd = "http"
-                # Check if HTTPS
-                if "443" in probe_args or "-S" in probe_args or "https" in probe_args.lower():
-                    extra_vars["http_ssl"] = "true"
-                    extra_vars["http_sni"] = "true"
-                    if "-k" in probe_args:
-                        extra_vars["http_ssl_force_tlsv1_2_or_higher"] = "false"
-                    svc_name = "https" if svc_name in ("http", "check_curl") else svc_name
+                # Use HTTPS in service name when SSL is detected
+                if extra_vars.get("http_ssl") == "true":
+                    if svc_name in ("http", "check_curl"):
+                        svc_name = "https"
 
             elif probe_type == "check_ping":
                 svc_name = "ping"
                 check_cmd = "ping4"
 
-            elif probe_type == "check_dell_smart":
-                # Custom probe - skip for now (requires custom plugin)
+            elif probe_type in ("check_dell_smart", "check_cloudflare_tunnel"):
+                # Custom probes - skip (require custom plugins or external API)
                 continue
 
             else:

@@ -166,17 +166,29 @@ GRANT ALL ON icingaweb2.* TO 'icingaweb2'@'localhost';
 FLUSH PRIVILEGES;
 EOSQL
 
-    # Import IcingaWeb2 schema
+    # Import IcingaWeb2 schema (note: file is mysql.schema.sql, NOT mysql.sql)
     echo "Importing IcingaWeb2 schema..."
-    mysql --socket=/var/run/mysqld/mysqld.sock -u root -p"${DB_PASS}" icingaweb2 < /usr/share/icingaweb2/schema/mysql.sql
+    mysql --socket=/var/run/mysqld/mysqld.sock -u root -p"${DB_PASS}" icingaweb2 < /usr/share/icingaweb2/schema/mysql.schema.sql
 
-    touch "$DB_INIT_FLAG"
-    echo "Database initialization complete"
+    if [ $? -eq 0 ]; then
+        touch "$DB_INIT_FLAG"
+        echo "Database initialization complete"
+    else
+        echo "ERROR: IcingaWeb2 schema import failed!"
+    fi
 fi
 
 # ==================== Admin User Setup ====================
 
 echo "Setting up admin user..."
+
+# Verify icingaweb_user table exists (schema may have failed on a previous run)
+TABLE_EXISTS=$(mysql --socket=/var/run/mysqld/mysqld.sock -u root -p"${DB_PASS}" icingaweb2 -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='icingaweb2' AND table_name='icingaweb_user';" 2>/dev/null)
+if [ "$TABLE_EXISTS" != "1" ]; then
+    echo "IcingaWeb2 schema missing — importing now..."
+    mysql --socket=/var/run/mysqld/mysqld.sock -u root -p"${DB_PASS}" icingaweb2 < /usr/share/icingaweb2/schema/mysql.schema.sql
+    touch "$DB_INIT_FLAG"
+fi
 
 # Generate bcrypt hash for admin password using PHP
 ADMIN_HASH=$(php -r "echo password_hash('${ADMIN_PASS}', PASSWORD_BCRYPT);")
@@ -324,12 +336,7 @@ object Host "localhost" {
 EOF
 
 cat > /etc/icinga2/conf.d/services.conf << EOF
-apply Service "ping" {
-  import "generic-service"
-  check_command = "ping4"
-  assign where host.address
-}
-
+/* Local monitoring only — Observium-synced hosts get their own services */
 apply Service "load" {
   import "generic-service"
   check_command = "load"
@@ -526,6 +533,15 @@ chmod +x /usr/local/bin/sync-observium-cron.sh
 # ==================== Validate and Start ====================
 
 echo "Validating Icinga2 configuration..."
+
+# Fix permissions before validation (LXC workaround)
+chmod -R 777 /var/run/icinga2 /var/log/icinga2 /var/lib/icinga2 2>/dev/null || true
+
+if icinga2 daemon -C 2>&1; then
+    echo "Icinga2 configuration validation passed"
+else
+    echo "WARNING: Icinga2 configuration validation failed (will attempt to start anyway)"
+fi
 
 # Stop the temporary MySQL (supervisor will restart it)
 mysqladmin shutdown --socket=/var/run/mysqld/mysqld.sock -u root -p"${DB_PASS}" 2>/dev/null || kill $MYSQL_TEMP_PID 2>/dev/null || true
