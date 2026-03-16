@@ -65,7 +65,7 @@ RUN chown mysql:mysql /var/run/mysqld
 COPY sites-enabled/icingaweb2.conf /etc/apache2/sites-enabled/icingaweb2.conf
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Copy entrypoint and scripts
+# Copy entrypoint and scripts (bust cache on entrypoint changes)
 COPY docker_entrypoint.sh /usr/local/bin/docker_entrypoint.sh
 COPY scripts/sync-observium.py /usr/local/bin/sync-observium.py
 RUN chmod +x /usr/local/bin/docker_entrypoint.sh /usr/local/bin/sync-observium.py

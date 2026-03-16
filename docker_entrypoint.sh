@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# Don't use set -e — we handle errors explicitly to prevent LXC quirks from killing startup
 
 echo "============================================"
 echo "  Icinga2 StartOS Package - Entrypoint"
@@ -81,11 +81,14 @@ echo "Initializing MySQL..."
 mkdir -p "$MYSQL_DATA" /var/run/mysqld /var/log/mysql
 chown -R mysql:mysql "$MYSQL_DATA" /var/run/mysqld /var/log/mysql
 
-# MySQL config for LXC compatibility
+# MySQL config for LXC compatibility — override default user=mysql since LXC
+# namespace mapping makes user switching unreliable (Permission denied on datadir)
 cat > /etc/mysql/mysql.conf.d/lxc-compat.cnf << 'EOF'
 [mysqld]
+user = root
 datadir = /root/data/mysql
 socket = /var/run/mysqld/mysqld.sock
+pid-file = /var/run/mysqld/mysqld.pid
 innodb_use_native_aio = 0
 innodb_flush_method = O_DSYNC
 skip-grant-tables = 0
@@ -95,13 +98,29 @@ EOF
 # Initialize MySQL data directory if empty
 if [ ! -d "$MYSQL_DATA/mysql" ]; then
     echo "Initializing MySQL data directory..."
-    mysqld --initialize-insecure --user=mysql --datadir="$MYSQL_DATA"
+    # Clean up any stale data and set wide-open perms for init
+    find "$MYSQL_DATA" -mindepth 1 -delete 2>/dev/null || true
+    chmod 777 "$MYSQL_DATA" 2>/dev/null || true
+    # Initialize MySQL data directory (user=root is set in lxc-compat.cnf)
+    mysqld --initialize-insecure --datadir="$MYSQL_DATA" 2>&1 || {
+        echo "MySQL initialization failed, check logs:"
+        cat /var/log/mysql/error.log 2>/dev/null | tail -20 || true
+    }
+    # Fix ownership — keep 777 for LXC compatibility (namespace mapping makes 750 unreliable)
+    chown -R mysql:mysql "$MYSQL_DATA" 2>/dev/null || echo "Warning: Could not chown MySQL datadir"
 fi
 
-# Start MySQL temporarily for setup
+# CRITICAL: LXC user namespace mapping makes ownership-based permissions unreliable.
+# Even when files show mysql:mysql inside the container, the host-side uid may differ.
+# chmod 777 is the only reliable way to ensure MySQL can access its datadir in LXC.
+chmod -R 777 "$MYSQL_DATA" 2>/dev/null || true
+chmod 755 /var/run/mysqld 2>/dev/null || true
+
+# Start MySQL temporarily for setup (user=root set in lxc-compat.cnf)
 echo "Starting MySQL for initial setup..."
-mysqld_safe &
-MYSQL_PID=$!
+/usr/sbin/mysqld --socket=/var/run/mysqld/mysqld.sock --pid-file=/var/run/mysqld/mysqld.pid --datadir="$MYSQL_DATA" &
+MYSQL_TEMP_PID=$!
+MYSQL_PID=$(cat /var/run/mysqld/mysqld.pid 2>/dev/null || echo "")
 
 # Wait for MySQL to be ready
 for i in $(seq 1 30); do
@@ -191,10 +210,6 @@ EOF
 # Enable API feature
 cat > /etc/icinga2/features-available/api.conf << EOF
 object ApiListener "api" {
-  cert_path = SysconfDir + "/icinga2/pki/" + NodeName + ".crt"
-  key_path = SysconfDir + "/icinga2/pki/" + NodeName + ".key"
-  ca_path = SysconfDir + "/icinga2/pki/ca.crt"
-
   accept_config = true
   accept_commands = true
 
@@ -215,19 +230,30 @@ ln -sf /etc/icinga2/features-available/checker.conf /etc/icinga2/features-enable
 ln -sf /etc/icinga2/features-available/mainlog.conf /etc/icinga2/features-enabled/ 2>/dev/null || true
 ln -sf /etc/icinga2/features-available/notification.conf /etc/icinga2/features-enabled/ 2>/dev/null || true
 
-# Set up Icinga2 API PKI (generate self-signed certs if missing)
+# Set up Icinga2 API PKI using modern cert directory (/var/lib/icinga2/certs/)
 ICINGA2_NODE="icinga2-startos"
-if [ ! -f /etc/icinga2/pki/${ICINGA2_NODE}.crt ]; then
+CERT_DIR="/var/lib/icinga2/certs"
+CA_DIR="/var/lib/icinga2/ca"
+if [ ! -f "${CERT_DIR}/${ICINGA2_NODE}.crt" ]; then
     echo "Generating Icinga2 API certificates..."
-    mkdir -p /etc/icinga2/pki
-    icinga2 pki new-ca
-    icinga2 pki new-cert --cn ${ICINGA2_NODE} \
-        --key /etc/icinga2/pki/${ICINGA2_NODE}.key \
-        --csr /etc/icinga2/pki/${ICINGA2_NODE}.csr
-    icinga2 pki sign-csr --csr /etc/icinga2/pki/${ICINGA2_NODE}.csr \
-        --cert /etc/icinga2/pki/${ICINGA2_NODE}.crt
-    cp /var/lib/icinga2/ca/ca.crt /etc/icinga2/pki/ca.crt
-    chown -R nagios:nagios /etc/icinga2/pki
+    mkdir -p "$CERT_DIR" "$CA_DIR"
+    # LXC workaround: ensure nagios user can write (uid mapping may block normal perms)
+    chmod -R 777 /var/lib/icinga2 2>/dev/null || true
+    icinga2 pki new-ca 2>&1
+    icinga2 pki new-cert --cn "${ICINGA2_NODE}" \
+        --key "${CERT_DIR}/${ICINGA2_NODE}.key" \
+        --csr "${CERT_DIR}/${ICINGA2_NODE}.csr" 2>&1
+    icinga2 pki sign-csr \
+        --csr "${CERT_DIR}/${ICINGA2_NODE}.csr" \
+        --cert "${CERT_DIR}/${ICINGA2_NODE}.crt" 2>&1
+    cp "${CA_DIR}/ca.crt" "${CERT_DIR}/ca.crt"
+    chown -R nagios:nagios "$CERT_DIR" "$CA_DIR" 2>/dev/null || true
+    # Verify certs were generated
+    if [ ! -f "${CERT_DIR}/${ICINGA2_NODE}.crt" ]; then
+        echo "ERROR: Failed to generate Icinga2 certificates"
+    else
+        echo "Certificates generated successfully"
+    fi
 fi
 
 # Write main icinga2.conf
@@ -237,9 +263,6 @@ cat > /etc/icinga2/icinga2.conf << EOF
  */
 
 include "constants.conf"
-
-const NodeName = "${ICINGA2_NODE}"
-const ZoneName = "master"
 
 object Endpoint NodeName {
   host = "127.0.0.1"
@@ -272,6 +295,9 @@ cat > /etc/icinga2/zones.conf << 'EOF'
 /* Zones configuration - single node setup */
 EOF
 
+# Clean out default conf.d (shipped with icinga2 package) — we generate everything
+find /etc/icinga2/conf.d -maxdepth 1 -name '*.conf' -delete 2>/dev/null || true
+
 # Write default templates
 cat > /etc/icinga2/conf.d/templates.conf << EOF
 template Host "generic-host" {
@@ -285,20 +311,6 @@ template Service "generic-service" {
   max_check_attempts = ${MAX_CHECK_ATTEMPTS}
   check_interval = ${CHECK_INTERVAL}
   retry_interval = ${RETRY_INTERVAL}
-}
-EOF
-
-# Write default commands (custom check_snmp with community)
-cat > /etc/icinga2/conf.d/commands.conf << EOF
-/* Custom check commands */
-object CheckCommand "snmp-uptime" {
-  command = [ PluginDir + "/check_snmp" ]
-  arguments = {
-    "-H" = "\$address\$"
-    "-C" = "\$snmp_community\$"
-    "-o" = ".1.3.6.1.2.1.1.3.0"
-  }
-  vars.snmp_community = "${SNMP_COMMUNITY}"
 }
 EOF
 
@@ -341,9 +353,10 @@ EOF
 mkdir -p /etc/icinga2/conf.d/generated
 touch /etc/icinga2/conf.d/generated/.keep
 
-# Fix Icinga2 permissions
-chown -R nagios:nagios /var/run/icinga2 /var/log/icinga2 /var/lib/icinga2
-chown -R nagios:nagios /etc/icinga2/conf.d/generated
+# Fix Icinga2 permissions (LXC: use 777 to work around uid namespace mapping)
+chmod -R 777 /var/run/icinga2 /var/log/icinga2 /var/lib/icinga2 2>/dev/null || true
+chown -R nagios:nagios /var/run/icinga2 /var/log/icinga2 /var/lib/icinga2 2>/dev/null || true
+chown -R nagios:nagios /etc/icinga2/conf.d/generated 2>/dev/null || true
 
 # ==================== IcingaWeb2 Configuration ====================
 
@@ -515,8 +528,8 @@ chmod +x /usr/local/bin/sync-observium-cron.sh
 echo "Validating Icinga2 configuration..."
 
 # Stop the temporary MySQL (supervisor will restart it)
-mysqladmin shutdown --socket=/var/run/mysqld/mysqld.sock -u root -p"${DB_PASS}" 2>/dev/null || true
-wait $MYSQL_PID 2>/dev/null || true
+mysqladmin shutdown --socket=/var/run/mysqld/mysqld.sock -u root -p"${DB_PASS}" 2>/dev/null || kill $MYSQL_TEMP_PID 2>/dev/null || true
+sleep 2
 
 echo "============================================"
 echo "  Starting services via supervisord"
