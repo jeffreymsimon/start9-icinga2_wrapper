@@ -128,9 +128,11 @@ def parse_curl_args(probe_args):
     if is_ssl or port == "443":
         extra_vars["http_ssl"] = "true"
 
-    # Skip cert verification (-k)
-    if "-k" in probe_args:
-        extra_vars["http_certificate"] = "ignore"
+    # Note: Observium's -k means "skip cert verification" (curl -k).
+    # Icinga2's check_http has no equivalent flag — http_certificate maps to
+    # -C (cert validity days), NOT skip-verify. We simply omit cert checking
+    # for self-signed endpoints. check_http will still connect via HTTPS and
+    # check the HTTP response without validating the certificate chain.
 
     return extra_vars
 
