@@ -355,26 +355,8 @@ object Host "localhost" {
 }
 EOF
 
-cat > /etc/icinga2/conf.d/services.conf << EOF
-/* Local monitoring only — Observium-synced hosts get their own services */
-apply Service "load" {
-  import "generic-service"
-  check_command = "load"
-  assign where host.name == "localhost"
-}
-
-apply Service "procs" {
-  import "generic-service"
-  check_command = "procs"
-  assign where host.name == "localhost"
-}
-
-apply Service "disk" {
-  import "generic-service"
-  check_command = "disk"
-  assign where host.name == "localhost"
-}
-EOF
+# No local service checks — all checks come from Observium sync
+: > /etc/icinga2/conf.d/services.conf
 
 # Ensure generated directory exists (for Observium sync)
 mkdir -p /etc/icinga2/conf.d/generated
