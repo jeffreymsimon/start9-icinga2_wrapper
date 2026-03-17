@@ -70,6 +70,8 @@ export const main = sdk.setupMain(async ({ effects }) => {
     `S9_ICINGA2_OBSERVIUM_DB_HOST=${shellEscape(config['observium-db-host'])}`,
     `S9_ICINGA2_OBSERVIUM_DB_USER=${shellEscape(config['observium-db-user'])}`,
     `S9_ICINGA2_OBSERVIUM_DB_PASSWORD=${shellEscape(config['observium-db-password'])}`,
+    `S9_ICINGA2_CF_API_TOKEN=${shellEscape(config['cf-api-token'])}`,
+    `S9_ICINGA2_CF_ACCOUNT_ID=${shellEscape(config['cf-account-id'])}`,
     `S9_ICINGA2_LOG_LEVEL=${shellEscape(config['log-level'])}`,
   ]
 

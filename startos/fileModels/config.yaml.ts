@@ -28,6 +28,10 @@ const configShape = object({
   'observium-db-user': string.onMismatch('observium'),
   'observium-db-password': string.onMismatch(''),
 
+  // Cloudflare tunnel monitoring
+  'cf-api-token': string.onMismatch(''),
+  'cf-account-id': string.onMismatch(''),
+
   // Logging
   'log-level': literals('error', 'warning', 'information', 'debug').onMismatch(
     'warning',
@@ -57,6 +61,8 @@ export type Config = {
   'observium-db-host': string
   'observium-db-user': string
   'observium-db-password': string
+  'cf-api-token': string
+  'cf-account-id': string
   'log-level': 'error' | 'warning' | 'information' | 'debug'
 }
 
@@ -75,5 +81,7 @@ export const defaultConfig: Config = {
   'observium-db-host': '10.0.60.125',
   'observium-db-user': 'observium',
   'observium-db-password': '',
+  'cf-api-token': '',
+  'cf-account-id': '',
   'log-level': 'warning',
 }

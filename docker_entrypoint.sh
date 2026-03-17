@@ -70,6 +70,22 @@ nameserver $DNS_SECONDARY
 options timeout:2 attempts:2
 EOF
 
+# ==================== Cloudflare Tunnel Check Config ====================
+# Write CF API credentials for check_cloudflare_tunnel plugin
+# These are the same credentials used by Observium's check_cloudflare_tunnel
+CF_API_TOKEN="${S9_ICINGA2_CF_API_TOKEN:-}"
+CF_ACCOUNT_ID="${S9_ICINGA2_CF_ACCOUNT_ID:-}"
+if [ -n "$CF_API_TOKEN" ] && [ -n "$CF_ACCOUNT_ID" ]; then
+    echo "Writing Cloudflare tunnel check config..."
+    cat > /etc/icinga2/cloudflare.conf << CFEOF
+CF_API_TOKEN=${CF_API_TOKEN}
+CF_ACCOUNT_ID=${CF_ACCOUNT_ID}
+CFEOF
+    chmod 640 /etc/icinga2/cloudflare.conf
+else
+    echo "WARNING: No Cloudflare API credentials configured - tunnel checks will fail"
+fi
+
 # ==================== MySQL Initialization ====================
 
 MYSQL_DATA="/root/data/mysql"
@@ -343,6 +359,31 @@ object CheckCommand "check_curl" {
   }
   vars.check_curl_ssl = false
   vars.check_curl_insecure = false
+}
+
+/* check_cloudflare_tunnel — queries CF API for tunnel health/connections */
+object CheckCommand "check_cloudflare_tunnel" {
+  command = [ PluginDir + "/check_cloudflare_tunnel" ]
+  arguments = {
+    "-T" = "$cf_tunnel_id$"
+    "-f" = "$cf_config_file$"
+    "-t" = "$cf_api_token$"
+    "-a" = "$cf_account_id$"
+    "-w" = "$cf_warn_conns$"
+    "-c" = "$cf_crit_conns$"
+  }
+  vars.cf_config_file = "/etc/icinga2/cloudflare.conf"
+}
+
+/* check_dell_smart — Dell iDRAC SMART predictive failure via SNMP */
+object CheckCommand "check_dell_smart" {
+  command = [ PluginDir + "/check_dell_smart" ]
+  arguments = {
+    "-H" = "$address$"
+    "-C" = "$dell_smart_community$"
+    "-v" = "$dell_smart_snmp_version$"
+  }
+  vars.dell_smart_snmp_version = "2c"
 }
 CMDEOF
 

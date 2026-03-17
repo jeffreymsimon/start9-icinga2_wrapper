@@ -1,0 +1,70 @@
+#!/bin/bash
+# check_dell_smart - Check Dell iDRAC physical disk SMART/predictive failure via SNMP
+# Walks the predictive failure table for all disks in one pass.
+# Exit codes: 0=OK, 1=WARNING (1 disk), 2=CRITICAL (2+ disks), 3=UNKNOWN
+
+HOST=""
+COMMUNITY=""
+VERSION="2c"
+PORT=161
+TIMEOUT=15
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -H) HOST="$2"; shift 2;;
+        -C) COMMUNITY="$2"; shift 2;;
+        -v) VERSION="$2"; shift 2;;
+        -p) PORT="$2"; shift 2;;
+        -t) TIMEOUT="$2"; shift 2;;
+        *) shift;;
+    esac
+done
+
+if [[ -z "$HOST" || -z "$COMMUNITY" ]]; then
+    echo "UNKNOWN - Missing -H host or -C community"
+    exit 3
+fi
+
+PRED_OID=".1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.31"
+NAME_OID=".1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.55"
+
+RESULT=$(snmpwalk -v${VERSION} -c "${COMMUNITY}" -t ${TIMEOUT} -r 1 "${HOST}:${PORT}" "${PRED_OID}" 2>&1)
+
+if [[ $? -ne 0 ]] || echo "$RESULT" | grep -qi "no such\|timeout\|error"; then
+    echo "UNKNOWN - SNMP walk failed: ${RESULT}"
+    exit 3
+fi
+
+TOTAL=0
+FAILED=0
+FAILED_DISKS=""
+
+while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    INDEX=$(echo "$line" | sed -n 's/.*\.31\.\([0-9][0-9]*\).*/\1/p')
+    VALUE=$(echo "$line" | sed -n 's/.*INTEGER: *\([0-9][0-9]*\).*/\1/p')
+    [[ -z "$VALUE" ]] && continue
+    TOTAL=$((TOTAL + 1))
+    if [[ "$VALUE" -ne 0 ]]; then
+        FAILED=$((FAILED + 1))
+        DNAME=$(snmpget -v${VERSION} -c "${COMMUNITY}" -t 5 -r 0 "${HOST}:${PORT}" "${NAME_OID}.${INDEX}" 2>/dev/null | sed 's/.*STRING: //;s/"//g')
+        [[ -z "$DNAME" ]] && DNAME="disk_idx=${INDEX}"
+        FAILED_DISKS="${FAILED_DISKS} ${DNAME}"
+    fi
+done <<< "$RESULT"
+
+if [[ $TOTAL -eq 0 ]]; then
+    echo "UNKNOWN - No physical disks found via SNMP"
+    exit 3
+fi
+
+if [[ $FAILED -eq 0 ]]; then
+    printf "OK - All %d disks: no SMART predictive failures|failed_disks=0;;;;%d total_disks=%d;;;;\n" "$TOTAL" "$TOTAL" "$TOTAL"
+    exit 0
+elif [[ $FAILED -eq 1 ]]; then
+    printf "WARNING - %d/%d disks with SMART predictive failure:%s|failed_disks=%d;1;2;0;%d total_disks=%d;;;;\n" "$FAILED" "$TOTAL" "$FAILED_DISKS" "$FAILED" "$TOTAL" "$TOTAL"
+    exit 1
+else
+    printf "CRITICAL - %d/%d disks with SMART predictive failure:%s|failed_disks=%d;1;2;0;%d total_disks=%d;;;;\n" "$FAILED" "$TOTAL" "$FAILED_DISKS" "$FAILED" "$TOTAL" "$TOTAL"
+    exit 2
+fi

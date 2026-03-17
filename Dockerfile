@@ -67,7 +67,9 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Copy Observium-compatible Nagios plugins
 COPY scripts/check_curl /usr/lib/nagios/plugins/check_curl
-RUN chmod +x /usr/lib/nagios/plugins/check_curl
+COPY scripts/check_cloudflare_tunnel /usr/lib/nagios/plugins/check_cloudflare_tunnel
+COPY scripts/check_dell_smart /usr/lib/nagios/plugins/check_dell_smart
+RUN chmod +x /usr/lib/nagios/plugins/check_curl /usr/lib/nagios/plugins/check_cloudflare_tunnel /usr/lib/nagios/plugins/check_dell_smart
 
 # Copy entrypoint and scripts (bust cache on entrypoint changes)
 COPY docker_entrypoint.sh /usr/local/bin/docker_entrypoint.sh

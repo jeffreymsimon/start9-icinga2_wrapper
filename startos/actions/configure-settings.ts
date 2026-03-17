@@ -94,6 +94,22 @@ const settingsInputSpec = InputSpec.of({
     masked: true,
   }),
 
+  // Cloudflare tunnel monitoring
+  cfApiToken: Value.text({
+    name: 'Cloudflare API Token',
+    description:
+      'API token for Cloudflare tunnel health checks (leave empty to skip)',
+    default: '',
+    required: false,
+    masked: true,
+  }),
+  cfAccountId: Value.text({
+    name: 'Cloudflare Account ID',
+    description: 'Cloudflare account ID for tunnel monitoring',
+    default: '',
+    required: false,
+  }),
+
   // Logging
   logLevel: Value.select({
     name: 'Log Level',
@@ -138,6 +154,8 @@ export const configureSettings = sdk.Action.withInput(
         observiumDbHost: config['observium-db-host'],
         observiumDbUser: config['observium-db-user'],
         observiumDbPassword: config['observium-db-password'],
+        cfApiToken: config['cf-api-token'],
+        cfAccountId: config['cf-account-id'],
         logLevel: config['log-level'] as
           | 'error'
           | 'warning'
@@ -158,6 +176,8 @@ export const configureSettings = sdk.Action.withInput(
       observiumDbHost: defaultConfig['observium-db-host'],
       observiumDbUser: defaultConfig['observium-db-user'],
       observiumDbPassword: defaultConfig['observium-db-password'],
+      cfApiToken: defaultConfig['cf-api-token'],
+      cfAccountId: defaultConfig['cf-account-id'],
       logLevel: defaultConfig['log-level'],
     }
   },
@@ -183,6 +203,8 @@ export const configureSettings = sdk.Action.withInput(
       'observium-db-password':
         input.observiumDbPassword ??
         existingConfig['observium-db-password'],
+      'cf-api-token': input.cfApiToken ?? existingConfig['cf-api-token'],
+      'cf-account-id': input.cfAccountId ?? existingConfig['cf-account-id'],
       'log-level': input.logLevel,
     })
 

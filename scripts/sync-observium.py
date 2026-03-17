@@ -167,6 +167,26 @@ def parse_snmp_args(probe_args, snmp_community):
     return extra_vars
 
 
+def parse_cloudflare_tunnel_args(probe_args):
+    """Parse Observium check_cloudflare_tunnel probe_args into Icinga2 vars.
+
+    Observium probe_args format:
+      -T 97895328-e525-4abd-81a7-834aa060fb9f -f /opt/observium/scripts/check_cloudflare_tunnel.conf
+    Remap the config file path to /etc/icinga2/cloudflare.conf (container path).
+    """
+    extra_vars = {}
+
+    # Parse tunnel ID (-T UUID)
+    tunnel_match = re.search(r"-T\s+([\w-]+)", probe_args)
+    if tunnel_match:
+        extra_vars["cf_tunnel_id"] = tunnel_match.group(1)
+
+    # Always use the container-local config file path
+    extra_vars["cf_config_file"] = "/etc/icinga2/cloudflare.conf"
+
+    return extra_vars
+
+
 def generate_services_conf(devices, probes, snmp_community):
     # Build device_id -> hostname map
     dev_map = {d["device_id"]: sanitize_name(d["hostname"]) for d in devices}
@@ -229,9 +249,15 @@ def generate_services_conf(devices, probes, snmp_community):
                 svc_name = "ping"
                 check_cmd = "ping4"
 
-            elif probe_type in ("check_dell_smart", "check_cloudflare_tunnel"):
-                # Custom probes - skip (require custom plugins or external API)
-                continue
+            elif probe_type == "check_cloudflare_tunnel":
+                extra_vars = parse_cloudflare_tunnel_args(probe_args)
+                svc_name = sanitize_name(probe_descr) or "cloudflare-tunnel"
+                check_cmd = "check_cloudflare_tunnel"
+
+            elif probe_type == "check_dell_smart":
+                svc_name = sanitize_name(probe_descr) or "dell-smart"
+                check_cmd = "check_dell_smart"
+                extra_vars = {"dell_smart_community": snmp_community}
 
             else:
                 # Unknown probe type - skip
