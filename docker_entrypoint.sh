@@ -326,6 +326,26 @@ template Service "generic-service" {
 }
 EOF
 
+# Register custom CheckCommands (Observium-compatible plugins)
+cat > /etc/icinga2/conf.d/commands.conf << 'CMDEOF'
+/* check_curl — identical to Observium's check_curl probe plugin.
+ * Passes probe_args straight through so synced checks run with
+ * the same flags on both Observium and Icinga2. */
+object CheckCommand "check_curl" {
+  command = [ PluginDir + "/check_curl" ]
+  arguments = {
+    "-H" = "$check_curl_hostname$"
+    "-S" = { set_if = "$check_curl_ssl$" }
+    "-p" = "$check_curl_port$"
+    "-k" = { set_if = "$check_curl_insecure$" }
+    "-w" = "$check_curl_warn$"
+    "-c" = "$check_curl_crit$"
+  }
+  vars.check_curl_ssl = false
+  vars.check_curl_insecure = false
+}
+CMDEOF
+
 # Write localhost monitoring
 cat > /etc/icinga2/conf.d/hosts.conf << EOF
 object Host "localhost" {
@@ -486,10 +506,10 @@ fi
 
 echo "Setting up cron jobs..."
 
-# Observium sync every 6 hours + on-demand trigger
+# Observium sync every 15 minutes + on-demand trigger
 cat > /etc/cron.d/icinga2-sync << 'EOF'
-# Sync from Observium every 6 hours
-0 */6 * * * root /usr/local/bin/sync-observium-cron.sh >> /var/log/icinga2/sync.log 2>&1
+# Sync from Observium every 15 minutes
+*/15 * * * * root /usr/local/bin/sync-observium-cron.sh >> /var/log/icinga2/sync.log 2>&1
 
 # Check for on-demand sync trigger every minute
 * * * * * root test -f /root/data/start9/sync-trigger && /usr/local/bin/sync-observium-cron.sh >> /var/log/icinga2/sync.log 2>&1 && rm -f /root/data/start9/sync-trigger

@@ -102,54 +102,36 @@ def generate_hosts_conf(devices, check_interval, retry_interval, max_attempts):
 
 
 def parse_curl_args(probe_args):
-    """Parse Observium check_curl probe_args into Icinga2 http check vars.
+    """Parse Observium check_curl probe_args into Icinga2 check_curl vars.
+
+    Uses the same check_curl plugin as Observium (installed in the container
+    at /usr/lib/nagios/plugins/check_curl), so args map 1:1 without translation.
 
     Observium probe_args format examples:
-      -p 8080              → port 8080
-      -S -p 443 --sni -k   → HTTPS on 443 with SNI, skip cert verify
-      -H observium.10fir.com -S -k → HTTPS to specific hostname via DNS
-      (empty)              → HTTP on port 80
-
-    When -H <hostname> is present, we set http_address to that hostname so
-    check_http resolves it via DNS (typically through Cloudflare) rather than
-    connecting to the host's internal IP address. This is the correct behavior
-    for public-facing probes that test the full path through Cloudflare/tunnel.
+      -H observium.10fir.com -S -k → HTTPS to hostname, skip cert verify
+      -p 8080                      → HTTP on port 8080
+      -S -p 443 --sni -k          → HTTPS on 443 with SNI
+      (empty)                      → HTTP on port 80
     """
     extra_vars = {}
+
+    # Parse hostname (-H HOSTNAME)
+    host_match = re.search(r"-H\s+(\S+)", probe_args)
+    if host_match:
+        extra_vars["check_curl_hostname"] = host_match.group(1)
 
     # Parse port (-p PORT)
     port_match = re.search(r"-p\s+(\d+)", probe_args)
     if port_match:
-        extra_vars["http_port"] = port_match.group(1)
+        extra_vars["check_curl_port"] = port_match.group(1)
 
-    # Parse hostname (-H HOSTNAME) — connect to this hostname via DNS
-    host_match = re.search(r"-H\s+(\S+)", probe_args)
-    if host_match:
-        target_host = host_match.group(1)
-        # http_address overrides the IP that check_http connects to.
-        # This makes it resolve the hostname via DNS (e.g., Cloudflare edge)
-        # instead of connecting to the Icinga2 host object's internal IP.
-        extra_vars["http_address"] = target_host
-        # http_vhost sets the Host header in the HTTP request
-        extra_vars["http_vhost"] = target_host
+    # Detect HTTPS (-S or --sni)
+    if "-S" in probe_args or "--sni" in probe_args:
+        extra_vars["check_curl_ssl"] = "true"
 
-    # Detect HTTPS
-    is_ssl = "-S" in probe_args or "--sni" in probe_args
-    port = extra_vars.get("http_port", "")
-    if is_ssl or port == "443":
-        extra_vars["http_ssl"] = "true"
-
-    # Enable SNI when connecting to a named host over HTTPS so that TLS
-    # negotiation sends the correct hostname. This is essential for
-    # Cloudflare-proxied endpoints and any server using SNI-based routing.
-    if extra_vars.get("http_ssl") == "true" and "http_address" in extra_vars:
-        extra_vars["http_sni"] = "true"
-
-    # Note: Observium's -k means "skip cert verification" (curl -k).
-    # When connecting through Cloudflare, the cert is valid so we do NOT
-    # need to skip verification. For direct connections to internal hosts
-    # with self-signed certs, check_http does not validate certs by default
-    # (it only checks cert validity days when -C is used), so no flag needed.
+    # Detect insecure mode (-k)
+    if "-k" in probe_args:
+        extra_vars["check_curl_insecure"] = "true"
 
     return extra_vars
 
@@ -238,11 +220,10 @@ def generate_services_conf(devices, probes, snmp_community):
             elif probe_type in ("check_curl", "check_http"):
                 extra_vars = parse_curl_args(probe_args)
                 svc_name = sanitize_name(probe_descr) or "http"
-                check_cmd = "http"
-                # Use HTTPS in service name when SSL is detected
-                if extra_vars.get("http_ssl") == "true":
-                    if svc_name in ("http", "check_curl"):
-                        svc_name = "https"
+                check_cmd = "check_curl"
+                # If no -H hostname in args, use the host's address
+                if "check_curl_hostname" not in extra_vars:
+                    extra_vars["check_curl_hostname"] = "$address$"
 
             elif probe_type == "check_ping":
                 svc_name = "ping"

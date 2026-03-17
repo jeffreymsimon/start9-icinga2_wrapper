@@ -1,0 +1,58 @@
+#!/bin/bash
+# check_curl - HTTP/HTTPS check using curl with SSL cert ignore support
+# Nagios-compatible wrapper. Supports -H, -S (HTTPS), -p (port), -k (insecure), --sni
+# Usage: check_curl -H hostname [-S] [-p port] [-k] [-w warn_seconds] [-c crit_seconds]
+#
+# Copied from Observium (/opt/observium/probes/nagios/check_curl) so that
+# Icinga2 can run the same checks with identical arguments.
+
+HOSTNAME=""
+PORT=80
+SCHEME="http"
+INSECURE=""
+WARN=5
+CRIT=10
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -H) HOSTNAME="$2"; shift 2 ;;
+        -S|--ssl) SCHEME="https"; PORT=443; shift ;;
+        -p) PORT="$2"; shift 2 ;;
+        -k|--insecure) INSECURE="-k"; shift ;;
+        --sni) shift ;;  # curl uses SNI by default, ignore flag
+        -w) WARN="$2"; shift 2 ;;
+        -c) CRIT="$2"; shift 2 ;;
+        -t) CRIT="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+if [[ -z "$HOSTNAME" ]]; then
+    echo "Usage: check_curl -H hostname [-S] [-p port] [-k] [-w warn] [-c crit]"
+    exit 3
+fi
+
+URL="${SCHEME}://${HOSTNAME}:${PORT}/"
+
+START=$(date +%s%N)
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time $CRIT $INSECURE "$URL" 2>/dev/null)
+CURL_EXIT=$?
+END=$(date +%s%N)
+
+ELAPSED=$(echo "scale=3; ($END - $START) / 1000000000" | bc)
+
+if [[ $CURL_EXIT -ne 0 ]]; then
+    echo "HTTP CRITICAL - curl error $CURL_EXIT connecting to ${URL} |time=${ELAPSED}s"
+    exit 2
+fi
+
+if [[ "$HTTP_CODE" -ge 500 ]]; then
+    echo "HTTP CRITICAL: HTTP/${HTTP_CODE} - ${URL} |time=${ELAPSED}s"
+    exit 2
+elif [[ "$HTTP_CODE" -ge 400 ]]; then
+    echo "HTTP WARNING: HTTP/${HTTP_CODE} - ${URL} |time=${ELAPSED}s"
+    exit 1
+else
+    echo "HTTP OK: HTTP/${HTTP_CODE} - ${URL} responded in ${ELAPSED}s |time=${ELAPSED}s"
+    exit 0
+fi

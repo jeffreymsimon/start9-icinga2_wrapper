@@ -65,6 +65,10 @@ RUN chown mysql:mysql /var/run/mysqld
 COPY sites-enabled/icingaweb2.conf /etc/apache2/sites-enabled/icingaweb2.conf
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Copy Observium-compatible Nagios plugins
+COPY scripts/check_curl /usr/lib/nagios/plugins/check_curl
+RUN chmod +x /usr/lib/nagios/plugins/check_curl
+
 # Copy entrypoint and scripts (bust cache on entrypoint changes)
 COPY docker_entrypoint.sh /usr/local/bin/docker_entrypoint.sh
 COPY scripts/sync-observium.py /usr/local/bin/sync-observium.py
