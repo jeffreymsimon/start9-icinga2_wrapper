@@ -84,5 +84,6 @@ COPY assets/compat/restore.sh /assets/compat/restore.sh
 RUN chmod +x /assets/compat/*.sh
 
 EXPOSE 80
+EXPOSE 5665
 
 ENTRYPOINT ["/usr/local/bin/docker_entrypoint.sh"]
