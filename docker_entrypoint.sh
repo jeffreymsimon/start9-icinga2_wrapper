@@ -626,7 +626,47 @@ cat > /etc/cron.d/icinga2-sync << 'EOF'
 
 # Check for on-demand sync trigger every minute
 * * * * * root test -f /root/data/start9/sync-trigger && /usr/local/bin/sync-observium-cron.sh >> /var/log/icinga2/sync.log 2>&1 && rm -f /root/data/start9/sync-trigger
+
+# Check for ntfy test trigger every minute
+* * * * * root test -f /root/data/start9/ntfy-test-trigger && /usr/local/bin/notify-ntfy-test.sh >> /var/log/icinga2/ntfy-test.log 2>&1 && rm -f /root/data/start9/ntfy-test-trigger
 EOF
+
+# Create ntfy test wrapper script
+cat > /usr/local/bin/notify-ntfy-test.sh << 'TESTEOF'
+#!/bin/bash
+CONFIG_FILE="/root/data/start9/config.yaml"
+NTFY_SERVER=$(yq -r '.["ntfy-server-url"] // "https://ntfy.sh"' "$CONFIG_FILE" 2>/dev/null)
+NTFY_TOPIC=$(yq -r '.["ntfy-topic"] // ""' "$CONFIG_FILE" 2>/dev/null)
+NTFY_USERNAME=$(yq -r '.["ntfy-username"] // ""' "$CONFIG_FILE" 2>/dev/null)
+NTFY_PASSWORD=$(yq -r '.["ntfy-password"] // ""' "$CONFIG_FILE" 2>/dev/null)
+NTFY_PRIORITY=$(yq -r '.["ntfy-priority"] // "4"' "$CONFIG_FILE" 2>/dev/null)
+
+if [ -z "$NTFY_TOPIC" ]; then
+    echo "$(date): ERROR: ntfy topic not configured"
+    exit 1
+fi
+
+CURL_ARGS=(
+    -s -o /dev/null -w "%{http_code}"
+    -H "Title: Icinga2 Test Notification"
+    -H "Priority: ${NTFY_PRIORITY}"
+    -H "Tags: white_check_mark,test"
+    -d "This is a test notification from Icinga2 on StartOS.
+
+If you see this, ntfy is configured correctly.
+Server: ${NTFY_SERVER}
+Topic: ${NTFY_TOPIC}
+Time: $(date)"
+)
+
+if [ -n "$NTFY_USERNAME" ] && [ -n "$NTFY_PASSWORD" ]; then
+    CURL_ARGS+=(-u "${NTFY_USERNAME}:${NTFY_PASSWORD}")
+fi
+
+HTTP_CODE=$(curl "${CURL_ARGS[@]}" "${NTFY_SERVER}/${NTFY_TOPIC}" 2>/dev/null)
+echo "$(date): Test notification sent to ${NTFY_SERVER}/${NTFY_TOPIC} — HTTP ${HTTP_CODE}"
+TESTEOF
+chmod +x /usr/local/bin/notify-ntfy-test.sh
 
 # Create the cron wrapper script
 cat > /usr/local/bin/sync-observium-cron.sh << CRONEOF
