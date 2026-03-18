@@ -28,6 +28,18 @@ const configShape = object({
   'observium-db-user': string.onMismatch('observium'),
   'observium-db-password': string.onMismatch(''),
 
+  // ntfy notifications
+  'ntfy-enabled': boolean.onMismatch(false),
+  'ntfy-server-url': string.onMismatch('https://ntfy.sh'),
+  'ntfy-topic': string.onMismatch(''),
+  'ntfy-username': string.onMismatch(''),
+  'ntfy-password': string.onMismatch(''),
+  'ntfy-priority': literals('1', '2', '3', '4', '5').onMismatch('4'),
+  'ntfy-on-critical': boolean.onMismatch(true),
+  'ntfy-on-warning': boolean.onMismatch(true),
+  'ntfy-on-recovery': boolean.onMismatch(true),
+  'ntfy-on-unknown': boolean.onMismatch(false),
+
   // Cloudflare tunnel monitoring
   'cf-api-token': string.onMismatch(''),
   'cf-account-id': string.onMismatch(''),
@@ -61,6 +73,16 @@ export type Config = {
   'observium-db-host': string
   'observium-db-user': string
   'observium-db-password': string
+  'ntfy-enabled': boolean
+  'ntfy-server-url': string
+  'ntfy-topic': string
+  'ntfy-username': string
+  'ntfy-password': string
+  'ntfy-priority': '1' | '2' | '3' | '4' | '5'
+  'ntfy-on-critical': boolean
+  'ntfy-on-warning': boolean
+  'ntfy-on-recovery': boolean
+  'ntfy-on-unknown': boolean
   'cf-api-token': string
   'cf-account-id': string
   'log-level': 'error' | 'warning' | 'information' | 'debug'
@@ -81,6 +103,16 @@ export const defaultConfig: Config = {
   'observium-db-host': '10.0.60.125',
   'observium-db-user': 'observium',
   'observium-db-password': '',
+  'ntfy-enabled': false,
+  'ntfy-server-url': 'https://ntfy.sh',
+  'ntfy-topic': '',
+  'ntfy-username': '',
+  'ntfy-password': '',
+  'ntfy-priority': '4',
+  'ntfy-on-critical': true,
+  'ntfy-on-warning': true,
+  'ntfy-on-recovery': true,
+  'ntfy-on-unknown': false,
   'cf-api-token': '',
   'cf-account-id': '',
   'log-level': 'warning',

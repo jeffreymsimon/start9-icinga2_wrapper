@@ -110,6 +110,73 @@ const settingsInputSpec = InputSpec.of({
     required: false,
   }),
 
+  // ntfy notifications
+  ntfyEnabled: Value.toggle({
+    name: 'Enable ntfy Notifications',
+    description:
+      'Send alert notifications to an ntfy server when hosts/services change state',
+    default: false,
+  }),
+  ntfyServerUrl: Value.text({
+    name: 'ntfy Server URL',
+    description:
+      'Full URL of the ntfy server (e.g. https://ntfy.sh or https://ntfy.10fir.com)',
+    default: 'https://ntfy.sh',
+    required: false,
+  }),
+  ntfyTopic: Value.text({
+    name: 'ntfy Topic',
+    description: 'Topic name to publish notifications to (e.g. icinga-alerts)',
+    default: '',
+    required: false,
+  }),
+  ntfyUsername: Value.text({
+    name: 'ntfy Username',
+    description: 'Username for ntfy authentication (leave empty for public topics)',
+    default: '',
+    required: false,
+  }),
+  ntfyPassword: Value.text({
+    name: 'ntfy Password',
+    description: 'Password for ntfy authentication',
+    default: '',
+    required: false,
+    masked: true,
+  }),
+  ntfyPriority: Value.select({
+    name: 'Default Priority',
+    description:
+      'Default ntfy priority for notifications (CRITICAL alerts always use "urgent")',
+    default: '4',
+    values: {
+      '1': 'Min',
+      '2': 'Low',
+      '3': 'Default',
+      '4': 'High',
+      '5': 'Urgent',
+    },
+  }),
+  ntfyOnCritical: Value.toggle({
+    name: 'Notify on CRITICAL',
+    description: 'Send notification when a host/service enters CRITICAL/DOWN state',
+    default: true,
+  }),
+  ntfyOnWarning: Value.toggle({
+    name: 'Notify on WARNING',
+    description: 'Send notification when a host/service enters WARNING state',
+    default: true,
+  }),
+  ntfyOnRecovery: Value.toggle({
+    name: 'Notify on RECOVERY',
+    description: 'Send notification when a host/service recovers to OK/UP state',
+    default: true,
+  }),
+  ntfyOnUnknown: Value.toggle({
+    name: 'Notify on UNKNOWN',
+    description: 'Send notification when a host/service enters UNKNOWN state',
+    default: false,
+  }),
+
   // Logging
   logLevel: Value.select({
     name: 'Log Level',
@@ -156,6 +223,16 @@ export const configureSettings = sdk.Action.withInput(
         observiumDbPassword: config['observium-db-password'],
         cfApiToken: config['cf-api-token'],
         cfAccountId: config['cf-account-id'],
+        ntfyEnabled: config['ntfy-enabled'],
+        ntfyServerUrl: config['ntfy-server-url'],
+        ntfyTopic: config['ntfy-topic'],
+        ntfyUsername: config['ntfy-username'],
+        ntfyPassword: config['ntfy-password'],
+        ntfyPriority: config['ntfy-priority'] as '1' | '2' | '3' | '4' | '5',
+        ntfyOnCritical: config['ntfy-on-critical'],
+        ntfyOnWarning: config['ntfy-on-warning'],
+        ntfyOnRecovery: config['ntfy-on-recovery'],
+        ntfyOnUnknown: config['ntfy-on-unknown'],
         logLevel: config['log-level'] as
           | 'error'
           | 'warning'
@@ -178,6 +255,16 @@ export const configureSettings = sdk.Action.withInput(
       observiumDbPassword: defaultConfig['observium-db-password'],
       cfApiToken: defaultConfig['cf-api-token'],
       cfAccountId: defaultConfig['cf-account-id'],
+      ntfyEnabled: defaultConfig['ntfy-enabled'],
+      ntfyServerUrl: defaultConfig['ntfy-server-url'],
+      ntfyTopic: defaultConfig['ntfy-topic'],
+      ntfyUsername: defaultConfig['ntfy-username'],
+      ntfyPassword: defaultConfig['ntfy-password'],
+      ntfyPriority: defaultConfig['ntfy-priority'],
+      ntfyOnCritical: defaultConfig['ntfy-on-critical'],
+      ntfyOnWarning: defaultConfig['ntfy-on-warning'],
+      ntfyOnRecovery: defaultConfig['ntfy-on-recovery'],
+      ntfyOnUnknown: defaultConfig['ntfy-on-unknown'],
       logLevel: defaultConfig['log-level'],
     }
   },
@@ -205,6 +292,16 @@ export const configureSettings = sdk.Action.withInput(
         existingConfig['observium-db-password'],
       'cf-api-token': input.cfApiToken ?? existingConfig['cf-api-token'],
       'cf-account-id': input.cfAccountId ?? existingConfig['cf-account-id'],
+      'ntfy-enabled': input.ntfyEnabled,
+      'ntfy-server-url': input.ntfyServerUrl ?? existingConfig['ntfy-server-url'],
+      'ntfy-topic': input.ntfyTopic ?? existingConfig['ntfy-topic'],
+      'ntfy-username': input.ntfyUsername ?? existingConfig['ntfy-username'],
+      'ntfy-password': input.ntfyPassword ?? existingConfig['ntfy-password'],
+      'ntfy-priority': input.ntfyPriority,
+      'ntfy-on-critical': input.ntfyOnCritical,
+      'ntfy-on-warning': input.ntfyOnWarning,
+      'ntfy-on-recovery': input.ntfyOnRecovery,
+      'ntfy-on-unknown': input.ntfyOnUnknown,
       'log-level': input.logLevel,
     })
 
@@ -217,6 +314,7 @@ export const configureSettings = sdk.Action.withInput(
 - Retry Interval: ${input.retryInterval}s
 - SNMP Community: ${input.snmpCommunity}
 - Observium Sync: ${input.observiumSyncEnabled ? 'Enabled' : 'Disabled'}
+- ntfy Notifications: ${input.ntfyEnabled ? 'Enabled' : 'Disabled'}${input.ntfyEnabled ? ` (${input.ntfyServerUrl}/${input.ntfyTopic})` : ''}
 - Log Level: ${input.logLevel}
 
 Please restart the service to apply these changes.`,

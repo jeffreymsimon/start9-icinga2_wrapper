@@ -525,6 +525,96 @@ if [ "$OBSERVIUM_SYNC" = "true" ]; then
         2>&1 || echo "WARNING: Observium sync failed (non-fatal)"
 fi
 
+# ==================== ntfy Notification Setup ====================
+
+NTFY_ENABLED="${S9_ICINGA2_NTFY_ENABLED:-false}"
+NTFY_ON_CRITICAL="${S9_ICINGA2_NTFY_ON_CRITICAL:-true}"
+NTFY_ON_WARNING="${S9_ICINGA2_NTFY_ON_WARNING:-true}"
+NTFY_ON_RECOVERY="${S9_ICINGA2_NTFY_ON_RECOVERY:-true}"
+NTFY_ON_UNKNOWN="${S9_ICINGA2_NTFY_ON_UNKNOWN:-false}"
+
+if [ "$NTFY_ENABLED" = "true" ]; then
+    echo "Configuring ntfy notifications..."
+
+    # Build state filter list for Icinga2
+    HOST_STATES=""
+    SERVICE_STATES=""
+    if [ "$NTFY_ON_CRITICAL" = "true" ]; then
+        HOST_STATES="Down"
+        SERVICE_STATES="Critical"
+    fi
+    if [ "$NTFY_ON_WARNING" = "true" ]; then
+        SERVICE_STATES="${SERVICE_STATES:+${SERVICE_STATES}, }Warning"
+    fi
+    if [ "$NTFY_ON_RECOVERY" = "true" ]; then
+        HOST_STATES="${HOST_STATES:+${HOST_STATES}, }Up"
+        SERVICE_STATES="${SERVICE_STATES:+${SERVICE_STATES}, }OK"
+    fi
+    if [ "$NTFY_ON_UNKNOWN" = "true" ]; then
+        SERVICE_STATES="${SERVICE_STATES:+${SERVICE_STATES}, }Unknown"
+    fi
+
+    # Write ntfy NotificationCommand
+    cat > /etc/icinga2/conf.d/ntfy-notifications.conf << 'NTFYEOF'
+/* ntfy notification command — calls notify-ntfy.sh which reads config.yaml */
+object NotificationCommand "ntfy-host-notification" {
+  command = [ "/usr/local/bin/notify-ntfy.sh" ]
+  env = {
+    NOTIFICATIONTYPE = "$notification.type$"
+    HOSTNAME = "$host.name$"
+    HOSTSTATE = "$host.state$"
+    HOSTOUTPUT = "$host.output$"
+    LONGDATETIME = "$icinga.long_date_time$"
+  }
+}
+
+object NotificationCommand "ntfy-service-notification" {
+  command = [ "/usr/local/bin/notify-ntfy.sh" ]
+  env = {
+    NOTIFICATIONTYPE = "$notification.type$"
+    HOSTNAME = "$host.name$"
+    HOSTSTATE = "$host.state$"
+    SERVICENAME = "$service.name$"
+    SERVICESTATE = "$service.state$"
+    SERVICEOUTPUT = "$service.output$"
+    LONGDATETIME = "$icinga.long_date_time$"
+  }
+}
+
+/* ntfy notification user */
+object User "ntfy" {
+  display_name = "ntfy Push Notifications"
+  enable_notifications = true
+}
+NTFYEOF
+
+    # Write notification apply rules with state filters
+    cat > /etc/icinga2/conf.d/ntfy-apply.conf << APPLYEOF
+/* Apply ntfy notifications to all hosts */
+apply Notification "ntfy-host" to Host {
+  command = "ntfy-host-notification"
+  users = [ "ntfy" ]
+  states = [ ${HOST_STATES} ]
+  types = [ Problem, Recovery ]
+  assign where true
+}
+
+/* Apply ntfy notifications to all services */
+apply Notification "ntfy-service" to Service {
+  command = "ntfy-service-notification"
+  users = [ "ntfy" ]
+  states = [ ${SERVICE_STATES} ]
+  types = [ Problem, Recovery ]
+  assign where true
+}
+APPLYEOF
+
+    echo "  ntfy notifications enabled (host states: ${HOST_STATES:-none}, service states: ${SERVICE_STATES:-none})"
+else
+    echo "ntfy notifications disabled"
+    rm -f /etc/icinga2/conf.d/ntfy-notifications.conf /etc/icinga2/conf.d/ntfy-apply.conf
+fi
+
 # ==================== Cron Setup ====================
 
 echo "Setting up cron jobs..."

@@ -72,6 +72,16 @@ export const main = sdk.setupMain(async ({ effects }) => {
     `S9_ICINGA2_OBSERVIUM_DB_PASSWORD=${shellEscape(config['observium-db-password'])}`,
     `S9_ICINGA2_CF_API_TOKEN=${shellEscape(config['cf-api-token'])}`,
     `S9_ICINGA2_CF_ACCOUNT_ID=${shellEscape(config['cf-account-id'])}`,
+    `S9_ICINGA2_NTFY_ENABLED=${shellEscape(config['ntfy-enabled'])}`,
+    `S9_ICINGA2_NTFY_SERVER_URL=${shellEscape(config['ntfy-server-url'])}`,
+    `S9_ICINGA2_NTFY_TOPIC=${shellEscape(config['ntfy-topic'])}`,
+    `S9_ICINGA2_NTFY_USERNAME=${shellEscape(config['ntfy-username'])}`,
+    `S9_ICINGA2_NTFY_PASSWORD=${shellEscape(config['ntfy-password'])}`,
+    `S9_ICINGA2_NTFY_PRIORITY=${shellEscape(config['ntfy-priority'])}`,
+    `S9_ICINGA2_NTFY_ON_CRITICAL=${shellEscape(config['ntfy-on-critical'])}`,
+    `S9_ICINGA2_NTFY_ON_WARNING=${shellEscape(config['ntfy-on-warning'])}`,
+    `S9_ICINGA2_NTFY_ON_RECOVERY=${shellEscape(config['ntfy-on-recovery'])}`,
+    `S9_ICINGA2_NTFY_ON_UNKNOWN=${shellEscape(config['ntfy-on-unknown'])}`,
     `S9_ICINGA2_LOG_LEVEL=${shellEscape(config['log-level'])}`,
   ]
 

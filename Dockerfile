@@ -74,7 +74,8 @@ RUN chmod +x /usr/lib/nagios/plugins/check_curl /usr/lib/nagios/plugins/check_cl
 # Copy entrypoint and scripts (bust cache on entrypoint changes)
 COPY docker_entrypoint.sh /usr/local/bin/docker_entrypoint.sh
 COPY scripts/sync-observium.py /usr/local/bin/sync-observium.py
-RUN chmod +x /usr/local/bin/docker_entrypoint.sh /usr/local/bin/sync-observium.py
+COPY scripts/notify-ntfy.sh /usr/local/bin/notify-ntfy.sh
+RUN chmod +x /usr/local/bin/docker_entrypoint.sh /usr/local/bin/sync-observium.py /usr/local/bin/notify-ntfy.sh
 
 # Copy backup/restore scripts
 RUN mkdir -p /assets/compat
