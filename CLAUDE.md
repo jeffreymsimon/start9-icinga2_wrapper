@@ -32,10 +32,27 @@ Icinga2 monitoring system packaged for StartOS 0.4.0. Deploys Icinga2 + IcingaWe
 
 ### Observium Sync
 - Opt-in via config toggle
-- Runs every 6 hours via cron + on-demand via "Sync Now" action
+- Runs every 15 minutes via cron + on-demand via "Sync Now" action
 - On-demand uses trigger file (`/root/data/start9/sync-trigger`) checked by cron every minute
 - Observium DB schema: uses `probe_disabled` (NOT `probe_deleted`)
-- Remote MySQL access: haz1upmedia001 bind-address changed to 0.0.0.0, firewall rule needed (BACKLOG item)
+- Remote MySQL access: container connects to haz1upmedia001 (10.0.60.125) MySQL directly — WORKING
+- 71 devices synced, generating hosts/services/hostgroups in `/etc/icinga2/conf.d/generated/`
+- Alternative external sync script: `scripts/sync-observium-to-icinga.py` (uses Icinga2 API, can run from haz1upmedia001)
+
+### ntfy Notifications
+- Opt-in via config toggle in Configure Settings action
+- When enabled, generates `ntfy-notifications.conf` and `ntfy-apply.conf` at startup
+- Notification script: `/usr/local/bin/notify-ntfy.sh` (reads config.yaml for server/topic/auth)
+- State filters: configurable per-state toggles (CRITICAL/WARNING/RECOVERY/UNKNOWN)
+- Priority mapping: CRITICAL→urgent (5), WARNING→configurable default, OK→default (3)
+- Notification policy: check every 5min, retry 3x at 1min intervals, then alert
+
+### Icinga2 API
+- Port 5665, binds to 0.0.0.0 inside container
+- User: `root`, password: auto-generated (stored in config.yaml as `api-password`)
+- Self-signed TLS certificate (CN: icinga2-startos)
+- Exposed via StartOS interface `api-multi` but NOT reachable externally (StartOS LXC networking doesn't NAT arbitrary TCP ports)
+- Access internally: `start-cli package attach icinga2 -- curl -sk -u root:<api-pass> https://127.0.0.1:5665/v1/status`
 
 ### Icinga2 PKI
 - Do NOT use `icinga2 api setup` — it generates certs using container hostname (random LXC hash)
